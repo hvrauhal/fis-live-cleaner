@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIS Live Scoring - Prettier Results
 // @namespace    https://fis.live-scoring.com
-// @version      3.2
+// @version      3.4
 // @description  Cleaner, more readable FIS live-scoring results for TV display
 // @match        https://fis.live-scoring.com/*
 // @grant        none
@@ -30,8 +30,41 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 15px;
       font-weight: 600;
-      padding: 6px 0 12px !important;
+      padding: 6px 0 10px !important;
       text-align: center;
+    }
+
+    /* Strip the inline background-image logo from the title div */
+    .ls-competition__title {
+      background-image: none !important;
+      padding-left: 0 !important;
+      min-height: 0 !important;
+    }
+
+    /* Force child headings down to container size */
+    .ls-competition__title-container h1,
+    .ls-competition__title-container h2,
+    .ls-competition__title-container h3,
+    .ls-competition__title-container h4,
+    .ls-competition__title h1,
+    .ls-competition__title h2,
+    .ls-competition__title h3,
+    .ls-competition__title h4 {
+      font-size: 15px !important;
+      font-weight: 600 !important;
+      line-height: 1.3 !important;
+      margin: 0 !important;
+    }
+
+    /* Also hide any <img>/<svg> logos if they appear elsewhere */
+    .ls-competition__title-container img,
+    .ls-competition__title-container svg,
+    .ls-competition__title-container picture,
+    .ls-competition__title img,
+    .ls-competition__title svg,
+    .ls-competition__title picture,
+    [class*="ls-competition__logo"] {
+      display: none !important;
     }
 
     .ls-result-group__result-table-container {
