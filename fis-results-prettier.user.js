@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIS Live Scoring - Prettier Results
 // @namespace    https://fis.live-scoring.com
-// @version      2.0
+// @version      3.0
 // @description  Cleaner, more readable FIS live-scoring results for TV display
 // @match        https://fis.live-scoring.com/*
 // @grant        none
@@ -40,12 +40,54 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
-    /* Hide the original table once we've built the new one */
+    /* Hide the original table */
     table.result-table.tm-hidden {
       display: none !important;
     }
 
-    /* New merged table */
+    /* Tabs */
+    .tm-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+    }
+
+    .tm-tab {
+      padding: 8px 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      border: none;
+      background: #e0e0e0;
+      color: #666;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .tm-tab:first-child {
+      border-radius: 6px 0 0 0;
+    }
+
+    .tm-tab:last-child {
+      border-radius: 0 6px 0 0;
+    }
+
+    .tm-tab.tm-active {
+      background: #1a1a2e;
+      color: #e0e0e0;
+    }
+
+    .tm-tab-content {
+      display: none;
+    }
+
+    .tm-tab-content.tm-active {
+      display: block;
+    }
+
+    /* Table styles */
     table.tm-table {
       border-collapse: collapse;
       width: 100%;
@@ -123,7 +165,6 @@
       font-size: 12px;
     }
 
-    /* The better run gets a subtle highlight */
     table.tm-table td.tm-best-run {
       font-weight: 600;
       color: #1a1a2e;
@@ -161,7 +202,6 @@
 
   function getRunData(row) {
     const cells = row.querySelectorAll('td');
-    // Structure: Rank(0), StNr(1), Bib(2), Name(3), NSA(4), YB(5), Run(6), J1(7), J2(8), J3(9), Score(10), BestScore(11)
     const scoreCell = cells[10];
     const text = scoreCell ? scoreCell.textContent.trim() : '';
     const j1 = cells[7]?.textContent.trim() || '';
@@ -171,26 +211,9 @@
     return { score: text, j1, j2, j3, isStatus: false };
   }
 
-  function buildMergedTable(table) {
+  function extractAthletes(table) {
     const entries = table.querySelectorAll('tbody.result-table-entry');
-    if (!entries.length) return null;
-
-    const newTable = document.createElement('table');
-    newTable.className = 'tm-table';
-
-    // Header
-    const thead = document.createElement('thead');
-    thead.innerHTML = `<tr>
-      <th>Rank</th>
-      <th>Bib</th>
-      <th class="tm-col-name">Name</th>
-      <th>Run 1</th>
-      <th>Run 2</th>
-      <th>Best</th>
-    </tr>`;
-    newTable.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
+    const athletes = [];
 
     entries.forEach(entry => {
       const rows = entry.querySelectorAll('tr.result-table-row');
@@ -198,66 +221,144 @@
       const run2Row = rows[1];
       if (!run1Row) return;
 
-      const run1Cells = run1Row.querySelectorAll('td');
-      const rankText = run1Cells[0]?.textContent.trim() || '';
-      const bib = run1Cells[2]?.textContent.trim() || '';
-      const name = run1Cells[3]?.textContent.trim() || '';
-      const nsa = run1Cells[4]?.textContent.trim() || '';
-      const bestScore = run1Cells[11]?.textContent.trim() || '';
+      const cells = run1Row.querySelectorAll('td');
+      athletes.push({
+        rank: cells[0]?.textContent.trim() || '',
+        stNr: cells[1]?.textContent.trim() || '',
+        bib: cells[2]?.textContent.trim() || '',
+        name: cells[3]?.textContent.trim() || '',
+        bestScore: cells[11]?.textContent.trim() || '',
+        run1: getRunData(run1Row),
+        run2: run2Row ? getRunData(run2Row) : { score: '', j1: '', j2: '', j3: '', isStatus: true },
+        inProgress: entry.classList.contains('result-table--in-progress'),
+      });
+    });
 
-      const run1 = getRunData(run1Row);
-      const run2 = run2Row ? getRunData(run2Row) : { score: '', j1: '', j2: '', j3: '', isStatus: true };
+    return athletes;
+  }
 
-      const rank = parseInt(rankText);
-      const tr = document.createElement('tr');
+  function runCellHtml(run) {
+    if (run.isStatus) return run.score || '-';
+    const judges = (run.j1 || run.j2 || run.j3)
+      ? `<div class="tm-judges">${run.j1} | ${run.j2} | ${run.j3}</div>`
+      : '';
+    return `${run.score}${judges}`;
+  }
 
-      // Podium classes
-      if (rank === 1) tr.classList.add('tm-podium-1');
-      if (rank === 2) tr.classList.add('tm-podium-2');
-      if (rank === 3) tr.classList.add('tm-podium-3');
+  function rankHtml(rankText) {
+    const rank = parseInt(rankText);
+    if (rank === 1) return '<span class="tm-rank-badge tm-gold">1</span>';
+    if (rank === 2) return '<span class="tm-rank-badge tm-silver">2</span>';
+    if (rank === 3) return '<span class="tm-rank-badge tm-bronze">3</span>';
+    return rankText;
+  }
 
-      // In-progress
-      if (entry.classList.contains('result-table--in-progress')) {
-        tr.classList.add('tm-in-progress');
-      }
+  function buildTable(athletes, showStNr) {
+    const tbl = document.createElement('table');
+    tbl.className = 'tm-table';
 
-      // Determine which run is the best
-      const r1Val = parseFloat(run1.score);
-      const r2Val = parseFloat(run2.score);
+    const thead = document.createElement('thead');
+    const stNrHeader = showStNr ? '<th>StNr</th>' : '';
+    thead.innerHTML = `<tr>
+      <th>Rank</th>
+      ${stNrHeader}
+      <th>Bib</th>
+      <th class="tm-col-name">Name</th>
+      <th>Run 1</th>
+      <th>Run 2</th>
+      <th>Best</th>
+    </tr>`;
+    tbl.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    athletes.forEach(a => {
+      const rank = parseInt(a.rank);
+      const r1Val = parseFloat(a.run1.score);
+      const r2Val = parseFloat(a.run2.score);
       const run1IsBest = !isNaN(r1Val) && (isNaN(r2Val) || r1Val >= r2Val);
       const run2IsBest = !isNaN(r2Val) && (isNaN(r1Val) || r2Val > r1Val);
 
-      // Rank cell
-      let rankHtml = rankText;
-      if (rank === 1) rankHtml = '<span class="tm-rank-badge tm-gold">1</span>';
-      else if (rank === 2) rankHtml = '<span class="tm-rank-badge tm-silver">2</span>';
-      else if (rank === 3) rankHtml = '<span class="tm-rank-badge tm-bronze">3</span>';
+      const run1Class = a.run1.isStatus ? 'tm-col-run tm-status' : (run1IsBest ? 'tm-col-run tm-best-run' : 'tm-col-run');
+      const run2Class = a.run2.isStatus ? 'tm-col-run tm-status' : (run2IsBest ? 'tm-col-run tm-best-run' : 'tm-col-run');
 
-      const run1Class = run1.isStatus ? 'tm-col-run tm-status' : (run1IsBest ? 'tm-col-run tm-best-run' : 'tm-col-run');
-      const run2Class = run2.isStatus ? 'tm-col-run tm-status' : (run2IsBest ? 'tm-col-run tm-best-run' : 'tm-col-run');
+      const tr = document.createElement('tr');
+      if (rank === 1) tr.classList.add('tm-podium-1');
+      if (rank === 2) tr.classList.add('tm-podium-2');
+      if (rank === 3) tr.classList.add('tm-podium-3');
+      if (a.inProgress) tr.classList.add('tm-in-progress');
 
-      function runCellHtml(run) {
-        if (run.isStatus) return run.score || '-';
-        const judges = (run.j1 || run.j2 || run.j3)
-          ? `<div class="tm-judges">${run.j1} | ${run.j2} | ${run.j3}</div>`
-          : '';
-        return `${run.score}${judges}`;
-      }
+      const stNrCol = showStNr ? `<td>${a.stNr}</td>` : '';
 
       tr.innerHTML = `
-        <td>${rankHtml}</td>
-        <td>${bib}</td>
-        <td class="tm-col-name">${name}</td>
-        <td class="${run1Class}">${runCellHtml(run1)}</td>
-        <td class="${run2Class}">${runCellHtml(run2)}</td>
-        <td class="tm-col-best">${bestScore}</td>
+        <td>${rankHtml(a.rank)}</td>
+        ${stNrCol}
+        <td>${a.bib}</td>
+        <td class="tm-col-name">${a.name}</td>
+        <td class="${run1Class}">${runCellHtml(a.run1)}</td>
+        <td class="${run2Class}">${runCellHtml(a.run2)}</td>
+        <td class="tm-col-best">${a.bestScore}</td>
       `;
 
       tbody.appendChild(tr);
     });
 
-    newTable.appendChild(tbody);
-    return newTable;
+    tbl.appendChild(tbody);
+    return tbl;
+  }
+
+  function buildTabbedView(table) {
+    const athletes = extractAthletes(table);
+    if (!athletes.length) return null;
+
+    const container = document.createElement('div');
+    container.className = 'tm-container';
+
+    // Tabs
+    const tabs = document.createElement('div');
+    tabs.className = 'tm-tabs';
+
+    const tabRank = document.createElement('button');
+    tabRank.className = 'tm-tab tm-active';
+    tabRank.textContent = 'By Rank';
+
+    const tabStart = document.createElement('button');
+    tabStart.className = 'tm-tab';
+    tabStart.textContent = 'By Start Order';
+
+    tabs.appendChild(tabRank);
+    tabs.appendChild(tabStart);
+    container.appendChild(tabs);
+
+    // Table by rank
+    const rankContent = document.createElement('div');
+    rankContent.className = 'tm-tab-content tm-active';
+    rankContent.appendChild(buildTable(athletes, false));
+    container.appendChild(rankContent);
+
+    // Table by start number
+    const startAthletes = [...athletes].sort((a, b) => parseInt(a.stNr) - parseInt(b.stNr));
+    const startContent = document.createElement('div');
+    startContent.className = 'tm-tab-content';
+    startContent.appendChild(buildTable(startAthletes, true));
+    container.appendChild(startContent);
+
+    // Tab switching
+    tabRank.addEventListener('click', () => {
+      tabRank.classList.add('tm-active');
+      tabStart.classList.remove('tm-active');
+      rankContent.classList.add('tm-active');
+      startContent.classList.remove('tm-active');
+    });
+
+    tabStart.addEventListener('click', () => {
+      tabStart.classList.add('tm-active');
+      tabRank.classList.remove('tm-active');
+      startContent.classList.add('tm-active');
+      rankContent.classList.remove('tm-active');
+    });
+
+    return container;
   }
 
   function applyEnhancements() {
@@ -270,16 +371,15 @@
     }
 
     tables.forEach(table => {
-      const merged = buildMergedTable(table);
-      if (!merged) return;
+      const view = buildTabbedView(table);
+      if (!view) return;
       table.classList.add('tm-hidden');
-      table.parentNode.insertBefore(merged, table.nextSibling);
+      table.parentNode.insertBefore(view, table.nextSibling);
     });
 
     return true;
   }
 
-  // The page is a SPA, so observe for DOM changes
   const observer = new MutationObserver(() => {
     applyEnhancements();
   });
