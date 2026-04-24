@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIS Live Scoring - Prettier Results
 // @namespace    https://fis.live-scoring.com
-// @version      3.0
+// @version      3.1
 // @description  Cleaner, more readable FIS live-scoring results for TV display
 // @match        https://fis.live-scoring.com/*
 // @grant        none
@@ -307,14 +307,18 @@
     return tbl;
   }
 
-  function buildTabbedView(table) {
-    const athletes = extractAthletes(table);
-    if (!athletes.length) return null;
+  function renderPanes(container, athletes) {
+    const rankPane = container.querySelector('.tm-pane-rank');
+    const startPane = container.querySelector('.tm-pane-start');
+    rankPane.replaceChildren(buildTable(athletes, false));
+    const startAthletes = [...athletes].sort((a, b) => parseInt(a.stNr) - parseInt(b.stNr));
+    startPane.replaceChildren(buildTable(startAthletes, true));
+  }
 
+  function buildContainer() {
     const container = document.createElement('div');
     container.className = 'tm-container';
 
-    // Tabs
     const tabs = document.createElement('div');
     tabs.className = 'tm-tabs';
 
@@ -330,58 +334,79 @@
     tabs.appendChild(tabStart);
     container.appendChild(tabs);
 
-    // Table by rank
-    const rankContent = document.createElement('div');
-    rankContent.className = 'tm-tab-content tm-active';
-    rankContent.appendChild(buildTable(athletes, false));
-    container.appendChild(rankContent);
+    const rankPane = document.createElement('div');
+    rankPane.className = 'tm-tab-content tm-pane-rank tm-active';
+    container.appendChild(rankPane);
 
-    // Table by start number
-    const startAthletes = [...athletes].sort((a, b) => parseInt(a.stNr) - parseInt(b.stNr));
-    const startContent = document.createElement('div');
-    startContent.className = 'tm-tab-content';
-    startContent.appendChild(buildTable(startAthletes, true));
-    container.appendChild(startContent);
+    const startPane = document.createElement('div');
+    startPane.className = 'tm-tab-content tm-pane-start';
+    container.appendChild(startPane);
 
-    // Tab switching
     tabRank.addEventListener('click', () => {
       tabRank.classList.add('tm-active');
       tabStart.classList.remove('tm-active');
-      rankContent.classList.add('tm-active');
-      startContent.classList.remove('tm-active');
+      rankPane.classList.add('tm-active');
+      startPane.classList.remove('tm-active');
     });
 
     tabStart.addEventListener('click', () => {
       tabStart.classList.add('tm-active');
       tabRank.classList.remove('tm-active');
-      startContent.classList.add('tm-active');
-      rankContent.classList.remove('tm-active');
+      startPane.classList.add('tm-active');
+      rankPane.classList.remove('tm-active');
     });
 
     return container;
   }
 
-  function applyEnhancements() {
-    const tables = document.querySelectorAll('table.result-table:not(.tm-hidden)');
-    if (!tables.length) return false;
+  const tableToContainer = new WeakMap();
 
+  function applyEnhancements() {
     if (!document.getElementById('tm-fis-style')) {
       STYLE.id = 'tm-fis-style';
       document.head.appendChild(STYLE);
     }
 
-    tables.forEach(table => {
-      const view = buildTabbedView(table);
-      if (!view) return;
-      table.classList.add('tm-hidden');
-      table.parentNode.insertBefore(view, table.nextSibling);
-    });
+    document.querySelectorAll('table.result-table').forEach(table => {
+      const athletes = extractAthletes(table);
+      if (!athletes.length) return;
 
-    return true;
+      let container = tableToContainer.get(table);
+      if (container && !container.isConnected) {
+        tableToContainer.delete(table);
+        container = null;
+      }
+
+      if (container) {
+        renderPanes(container, athletes);
+      } else {
+        container = buildContainer();
+        renderPanes(container, athletes);
+        table.classList.add('tm-hidden');
+        table.parentNode.insertBefore(container, table.nextSibling);
+        tableToContainer.set(table, container);
+      }
+    });
   }
 
-  const observer = new MutationObserver(() => {
-    applyEnhancements();
+  function mutationIsOurs(mutation) {
+    let node = mutation.target;
+    while (node) {
+      if (node.nodeType === 1 && node.classList && node.classList.contains('tm-container')) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  let scheduled = false;
+  const observer = new MutationObserver(mutations => {
+    if (scheduled) return;
+    if (mutations.every(mutationIsOurs)) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      applyEnhancements();
+    });
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
