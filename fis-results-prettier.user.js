@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIS Live Scoring - Prettier Results
 // @namespace    https://fis.live-scoring.com
-// @version      3.1
+// @version      3.2
 // @description  Cleaner, more readable FIS live-scoring results for TV display
 // @match        https://fis.live-scoring.com/*
 // @grant        none
@@ -198,6 +198,61 @@
     table.tm-table tr.tm-in-progress td:first-child {
       border-left: 3px solid #4caf50;
     }
+
+    /* Header row: tabs on the left, paging on the right */
+    .tm-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+    }
+
+    .tm-paging {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 6px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .tm-page-size {
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .tm-page-prev,
+    .tm-page-next {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .tm-page-prev:disabled,
+    .tm-page-next:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .tm-page-indicator {
+      font-size: 12px;
+      color: #444;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    .tm-paging-off .tm-page-prev,
+    .tm-paging-off .tm-page-next,
+    .tm-paging-off .tm-page-indicator {
+      display: none;
+    }
   `;
 
   function getRunData(row) {
@@ -307,17 +362,51 @@
     return tbl;
   }
 
+  const PAGE_SIZE_OPTIONS = [
+    { value: 0, label: 'All' },
+    { value: 10, label: '10 / page' },
+    { value: 15, label: '15 / page' },
+    { value: 20, label: '20 / page' },
+    { value: 30, label: '30 / page' },
+  ];
+
   function renderPanes(container, athletes) {
+    const pageSize = container.__tmPageSize || 0;
+    const totalPages = pageSize ? Math.max(1, Math.ceil(athletes.length / pageSize)) : 1;
+    const page = Math.min(Math.max(0, container.__tmPage || 0), totalPages - 1);
+    container.__tmPage = page;
+
+    const window = list => pageSize ? list.slice(page * pageSize, (page + 1) * pageSize) : list;
+
     const rankPane = container.querySelector('.tm-pane-rank');
     const startPane = container.querySelector('.tm-pane-start');
-    rankPane.replaceChildren(buildTable(athletes, false));
+    rankPane.replaceChildren(buildTable(window(athletes), false));
     const startAthletes = [...athletes].sort((a, b) => parseInt(a.stNr) - parseInt(b.stNr));
-    startPane.replaceChildren(buildTable(startAthletes, true));
+    startPane.replaceChildren(buildTable(window(startAthletes), true));
+
+    const paging = container.querySelector('.tm-paging');
+    const indicator = paging.querySelector('.tm-page-indicator');
+    const prev = paging.querySelector('.tm-page-prev');
+    const next = paging.querySelector('.tm-page-next');
+    if (pageSize) {
+      paging.classList.remove('tm-paging-off');
+      indicator.textContent = `Page ${page + 1} / ${totalPages}`;
+      prev.disabled = page === 0;
+      next.disabled = page >= totalPages - 1;
+    } else {
+      paging.classList.add('tm-paging-off');
+    }
   }
 
   function buildContainer() {
     const container = document.createElement('div');
     container.className = 'tm-container';
+    container.__tmPageSize = 0;
+    container.__tmPage = 0;
+    container.__tmAthletes = [];
+
+    const header = document.createElement('div');
+    header.className = 'tm-header';
 
     const tabs = document.createElement('div');
     tabs.className = 'tm-tabs';
@@ -332,7 +421,38 @@
 
     tabs.appendChild(tabRank);
     tabs.appendChild(tabStart);
-    container.appendChild(tabs);
+    header.appendChild(tabs);
+
+    const paging = document.createElement('div');
+    paging.className = 'tm-paging tm-paging-off';
+
+    const sizeSelect = document.createElement('select');
+    sizeSelect.className = 'tm-page-size';
+    PAGE_SIZE_OPTIONS.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = String(opt.value);
+      option.textContent = opt.label;
+      sizeSelect.appendChild(option);
+    });
+
+    const prev = document.createElement('button');
+    prev.className = 'tm-page-prev';
+    prev.textContent = '◀';
+
+    const indicator = document.createElement('span');
+    indicator.className = 'tm-page-indicator';
+
+    const next = document.createElement('button');
+    next.className = 'tm-page-next';
+    next.textContent = '▶';
+
+    paging.appendChild(sizeSelect);
+    paging.appendChild(prev);
+    paging.appendChild(indicator);
+    paging.appendChild(next);
+    header.appendChild(paging);
+
+    container.appendChild(header);
 
     const rankPane = document.createElement('div');
     rankPane.className = 'tm-tab-content tm-pane-rank tm-active';
@@ -354,6 +474,22 @@
       tabRank.classList.remove('tm-active');
       startPane.classList.add('tm-active');
       rankPane.classList.remove('tm-active');
+    });
+
+    sizeSelect.addEventListener('change', () => {
+      container.__tmPageSize = parseInt(sizeSelect.value, 10) || 0;
+      container.__tmPage = 0;
+      renderPanes(container, container.__tmAthletes);
+    });
+
+    prev.addEventListener('click', () => {
+      container.__tmPage = Math.max(0, (container.__tmPage || 0) - 1);
+      renderPanes(container, container.__tmAthletes);
+    });
+
+    next.addEventListener('click', () => {
+      container.__tmPage = (container.__tmPage || 0) + 1;
+      renderPanes(container, container.__tmAthletes);
     });
 
     return container;
@@ -378,9 +514,11 @@
       }
 
       if (container) {
+        container.__tmAthletes = athletes;
         renderPanes(container, athletes);
       } else {
         container = buildContainer();
+        container.__tmAthletes = athletes;
         renderPanes(container, athletes);
         table.classList.add('tm-hidden');
         table.parentNode.insertBefore(container, table.nextSibling);
