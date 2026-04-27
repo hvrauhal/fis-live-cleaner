@@ -2,6 +2,8 @@
 
 A userscript that cleans up FIS live-scoring results for TV display.
 
+This was used in the slopestyle Freeski SM 2026 live streams, see https://www.youtube.com/live/kf9yLnbmdeE?si=u8g5OhlmB8IJCdAb
+
 ## Install on Chrome
 
 1. Install the [Tampermonkey](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo) extension.
