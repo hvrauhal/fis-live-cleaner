@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIS Live Scoring - Prettier Results
 // @namespace    https://fis.live-scoring.com
-// @version      3.4
+// @version      3.6
 // @description  Cleaner, more readable FIS live-scoring results for TV display
 // @match        https://fis.live-scoring.com/*
 // @grant        none
@@ -22,7 +22,7 @@
 
     /* Overall page cleanup */
     body {
-      background: #fff !important;
+      background: rgba(0, 0, 0, 0.1) !important;
       padding: 20px !important;
     }
 
@@ -86,7 +86,7 @@
     }
 
     .tm-tab {
-      padding: 8px 20px;
+      padding: 6px 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 13px;
       font-weight: 600;
@@ -94,22 +94,14 @@
       letter-spacing: 0.5px;
       cursor: pointer;
       border: none;
-      background: #e0e0e0;
-      color: #666;
-      transition: background 0.15s, color 0.15s;
-    }
-
-    .tm-tab:first-child {
-      border-radius: 6px 0 0 0;
-    }
-
-    .tm-tab:last-child {
-      border-radius: 0 6px 0 0;
+      background: transparent;
+      color: #888;
+      transition: color 0.15s;
     }
 
     .tm-tab.tm-active {
-      background: #1a1a2e;
-      color: #e0e0e0;
+      background: transparent;
+      color: #111;
     }
 
     .tm-tab-content {
@@ -124,19 +116,19 @@
     table.tm-table {
       border-collapse: collapse;
       width: 100%;
-      font-size: 14px;
+      font-size: 16px;
       line-height: 1.4;
     }
 
     table.tm-table thead th {
-      background: #1a1a2e;
-      color: #e0e0e0;
+      background: transparent;
+      color: #111;
       font-weight: 600;
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      padding: 8px 10px;
-      border-bottom: 2px solid #16213e;
+      padding: 4px 10px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.2);
       position: sticky;
       top: 0;
       z-index: 10;
@@ -148,31 +140,28 @@
     }
 
     table.tm-table tbody tr {
-      border-bottom: 1px solid #e0e0e0;
-      transition: background 0.15s;
-    }
-
-    table.tm-table tbody tr:hover {
-      background: #f0f4ff;
-    }
-
-    table.tm-table tbody tr:nth-child(even) {
-      background: #fafafa;
-    }
-    table.tm-table tbody tr:nth-child(even):hover {
-      background: #f0f4ff;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      background: transparent;
     }
 
     table.tm-table td {
-      padding: 7px 10px;
+      padding: 4px 10px;
       vertical-align: middle;
       text-align: center;
     }
 
     table.tm-table td.tm-col-name {
       text-align: left;
-      font-weight: 500;
+      font-size: 22px;
+      font-weight: 400;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       white-space: nowrap;
+      line-height: 1.1;
+    }
+
+    table.tm-table td.tm-col-name .tm-name-family {
+      font-weight: 700;
     }
 
     table.tm-table td.tm-col-best {
@@ -203,13 +192,10 @@
       color: #1a1a2e;
     }
 
-    /* Podium rows */
-    table.tm-table tr.tm-podium-1 { background: #fff9e6; }
-    table.tm-table tr.tm-podium-2 { background: #f5f5f5; }
-    table.tm-table tr.tm-podium-3 { background: #fdf0e6; }
-    table.tm-table tr.tm-podium-1:hover,
-    table.tm-table tr.tm-podium-2:hover,
-    table.tm-table tr.tm-podium-3:hover { background: #f0f4ff; }
+    /* Podium rows — keep rank badges, no row tint */
+    table.tm-table tr.tm-podium-1,
+    table.tm-table tr.tm-podium-2,
+    table.tm-table tr.tm-podium-3 { background: transparent; }
 
     /* Rank badges */
     .tm-rank-badge {
@@ -252,17 +238,17 @@
       font-size: 12px;
       padding: 4px 6px;
       border-radius: 4px;
-      border: 1px solid #ccc;
-      background: #fff;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      background: transparent;
       cursor: pointer;
     }
 
     .tm-page-prev,
     .tm-page-next {
-      background: #1a1a2e;
-      color: #e0e0e0;
-      border: none;
-      padding: 5px 10px;
+      background: transparent;
+      color: #111;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      padding: 4px 10px;
       cursor: pointer;
       border-radius: 4px;
       font-size: 12px;
@@ -333,6 +319,19 @@
     return `${run.score}${judges}`;
   }
 
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function formatName(name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    return parts.map(p => {
+      const isFamily = p.length > 1 && p === p.toUpperCase() && /[A-ZÀ-Ý]/.test(p);
+      const cls = isFamily ? 'tm-name-family' : 'tm-name-given';
+      return `<span class="${cls}">${escapeHtml(p)}</span>`;
+    }).join(' ');
+  }
+
   function rankHtml(rankText) {
     const rank = parseInt(rankText);
     if (rank === 1) return '<span class="tm-rank-badge tm-gold">1</span>';
@@ -382,7 +381,7 @@
         <td>${rankHtml(a.rank)}</td>
         ${stNrCol}
         <td>${a.bib}</td>
-        <td class="tm-col-name">${a.name}</td>
+        <td class="tm-col-name">${formatName(a.name)}</td>
         <td class="${run1Class}">${runCellHtml(a.run1)}</td>
         <td class="${run2Class}">${runCellHtml(a.run2)}</td>
         <td class="tm-col-best">${a.bestScore}</td>
